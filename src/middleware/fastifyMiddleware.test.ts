@@ -17,6 +17,21 @@ async function buildApp(options = {}): Promise<FastifyInstance> {
   return fastify;
 }
 
+/**
+ * Extracts the JSON payload embedded in a routewatch HTML response.
+ * Looks for content inside a <pre> tag and parses it as JSON.
+ */
+function extractJsonFromHtmlResponse(body: string): unknown[] {
+  const match = body.match(/<pre>(.*?)<\/pre>/s);
+  if (!match) return [];
+  try {
+    const parsed = JSON.parse(match[1].trim());
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 describe('routeWatchFastify middleware', () => {
   let app: FastifyInstance;
 
@@ -65,14 +80,12 @@ describe('routeWatchFastify middleware', () => {
 
   it('should not record traffic to the docs route itself', async () => {
     await app.inject({ method: 'GET', url: '/__routewatch' });
+    await app.inject({ method: 'GET', url: '/__routewatch' });
+
     const docsResponse = await app.inject({ method: 'GET', url: '/__routewatch' });
-    const parsed = JSON.parse(
-      (await app.inject({ method: 'GET', url: '/__routewatch', headers: {} })).body
-        .replace(/.*<pre>(.*)<\/pre>.*/s, '$1')
-        .trim() || '[]'
-    );
+    const routes = extractJsonFromHtmlResponse(docsResponse.body);
+
     // Docs path should not appear as a collected route
-    const routes = Array.isArray(parsed) ? parsed : [];
     const docRoute = routes.find((r: any) => r.path === '/__routewatch');
     expect(docRoute).toBeUndefined();
   });
